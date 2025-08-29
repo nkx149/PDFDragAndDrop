@@ -1,0 +1,45 @@
+﻿
+
+.file-upload-input {
+    position: absolute !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    z-index: 10 !important;
+    opacity: 0 !important;
+}
+
+.drag-scroll-container {
+    position: relative; /* in case you want corner buttons later */
+    height: 80vh; /* or max-height if you want it flexible */
+    overflow-y: auto; /* enables scrolling */
+    overscroll-behavior: contain; /* stops the whole page from scrolling when you hit edges */
+    border: 2px dashed rgba(0,0,0,.2);
+    border-radius: 12px;
+}
+
+.thumb-button {
+    padding: 0;
+    min-width: unset;
+    border-radius: 8px;
+}
+
+/* Base thumb style */
+.thumb {
+    display: block;
+    height: auto;
+    border-radius: 8px;
+    outline: 2px solid transparent;
+    outline-offset: 2px; /* makes the outline visible outside the image edge */
+    transition: outline-color 150ms ease;
+}
+
+/* Selected state */
+.thumb--selected {
+    outline-color: var(--mud-palette-primary) !important;
+}
+
+/* Optional hover glow on the button (the faint halo you mentioned) */
+.hover-primary-outline:hover {
+    box-shadow: 0 0 0 0.2rem var(--mud-palette-primary) !important;
+}
