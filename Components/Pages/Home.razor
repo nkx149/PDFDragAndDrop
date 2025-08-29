@@ -1,0 +1,767 @@
+﻿@page "/"
+@inject ISnackbar Snackbar
+@using PdfiumViewer;
+@using System.Drawing;
+@using System.Drawing.Imaging;
+@using System.IO;
+@using PdfWebApp.Models;
+@using PdfSharpCore.Pdf;
+@using PdfSharpCore.Pdf.IO;
+@inject IJSRuntime JS
+@inject IDialogService DialogService
+
+
+
+<PageTitle>Home</PageTitle>
+<style>
+    .file-upload-input {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        z-index: 10;
+        opacity: 0;
+    }
+
+    .drag-scroll-container {
+        position: relative; /* in case you want corner buttons later */
+        height: 80vh; /* or max-height if you want it flexible */
+        overflow-y: auto; /* enables scrolling */
+        overscroll-behavior: contain; /* stops the whole page from scrolling when you hit edges */
+        border: 2px dashed rgba(0,0,0,.2);
+        border-radius: 12px;
+        background-color: gainsboro;
+    }
+
+    .mud-input-control-input-container {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+    .thumb-button {
+        padding: 0;
+        min-width: unset;
+        border-radius: 8px;
+
+    }
+
+    /* Optional hover glow on the button (the faint halo you mentioned) */
+    .hover-primary-outline:hover {
+        box-shadow: 0 0 0 0.2rem var(--mud-palette-primary) !important;
+
+    }
+
+    .mud-input-control-input-container > div {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+        height: 100%;
+    }
+    
+    .thumbnail-selected {
+        outline: 3px solid var(--mud-palette-primary) !important;
+        border-radius: 8px !important;
+    }
+
+</style>
+
+
+<div style="display:flex; height:100vh;">
+
+    <MudDropContainer T="PageModel" @ref="_dropContainer" Items="_pages" ItemsSelector="@((item, dropzone) => item.Zone == dropzone)" ItemDropped="OnItemDropped" Class="d-flex flex-row flex-grow-1">
+        <ChildContent>
+            <MudPaper Class="p-0" Style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                <MudToolBar Dense="true"
+                            Class="m-0 p-0"
+                            Style="min-height: 32px; border-bottom: 2px solid rgba(0,0,0,0.12); flex-shrink: 0;">
+                    <div style="display: flex; align-items: center; justify-content: center; width: 100%; position: relative;">
+                        @if (_leftPdfLoaded)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                           OnClick="@ToggleEdit" Color="MudBlazor.Color.Inherit"
+                            
+                                            />
+                            <MudTextField @bind-Value="_fileNameLeft" Placeholder="Left Side PDF" Margin="Margin.Dense" Disabled="@(!_isEditable)"></MudTextField>
+                        }else
+                        {
+                            <MudText Typo="Typo.subtitle2" Class="px-2">@(_fileNameLeft ?? "Left PDF Document")</MudText>
+                        }
+                        
+                    </div>
+                    <div style="margin-left:auto; display:flex; gap:4px;">
+                        <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="MudBlazor.Size.Small" OnClick="@(() => UndoDelete("left"))"/>
+                        <MudIconButton Icon="@Icons.Material.Filled.Save" Size="MudBlazor.Size.Small" OnClick="@(() => SavePdfAsync("left", _fileNameLeft))" />
+                        <MudButton Class="mr-2" Color="MudBlazor.Color.Error" Variant="Variant.Filled" Size="MudBlazor.Size.Small" OnClick="ClearLeftAsync">Clear</MudButton>
+                    </div>
+
+                </MudToolBar>
+                <div style="position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                    @if (_isLeftLoading)
+                    {
+                        <MudOverlay Visible="true" DarkBackground="true" ZIndex="9999" Absolute="true">
+                            <MudProgressCircular Color="MudBlazor.Color.Primary" Indeterminate="true" Size="MudBlazor.Size.Large" />
+                        </MudOverlay>
+                    }
+                    @if (!_leftPdfLoaded)
+                    {
+                        <!-- File upload section -->
+                        <MudFileUpload T="IBrowserFile"
+                                       @ref="@_fileUploadLeft"
+                                       OnFilesChanged="OnInputFileChangedLeft"
+                                       Hidden="@false"
+                                       InputClass="file-upload-input"
+                                       tabindex="-1"
+                                       @ondrop="@ClearDragClassLeft"
+                                       @ondragenter="@SetDragClassLeft"
+                                       @ondragleave="@ClearDragClassLeft"
+                                       @ondragend="@ClearDragClassLeft"
+                                       Style="flex: 1; display: flex; min-height: 0; flex-grow: 1">
+                            <ActivatorContent>
+
+                                <MudPaper Outlined="true"
+                                            Class="@_dragClassLeft"
+                                            Style="flex:1; min-height:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center; flex-direction:column;">
+                                    <MudIcon Icon="@Icons.Material.Filled.UploadFile" Size="MudBlazor.Size.Medium" />
+                                    <MudText Typo="Typo.subtitle2">
+                                        Drag and drop files here or click
+                                    </MudText>
+                                </MudPaper>
+
+                                
+
+                            </ActivatorContent>
+                        </MudFileUpload>
+
+                    }
+                    else
+                    {
+                        <div class="drag-scroll-container"
+                             ondragover="dragAutoScroll(event)"
+                             data-autoscroll-threshold="70"
+                             data-autoscroll-speed="20">
+                            <MudDropZone T="PageModel"
+                                         Identifier="left"
+                                         AllowReorder="true"
+                                         Class="d-flex flex-column gap-2 p-2"
+                                         Style="flex-grow: 1; align-items: center; min-height: 500px;">
+                            </MudDropZone>
+                            @if (_dialogLoading)
+                            {
+                                <MudOverlay Visible="true" DarkBackground="true" ZIndex="9999">
+                                    <MudProgressCircular Color="MudBlazor.Color.Primary" Indeterminate="true" Size="MudBlazor.Size.Large" />
+                                </MudOverlay>
+                            }
+
+                        </div>
+
+
+                    }
+                </div>
+                
+                
+
+
+            </MudPaper>
+
+            <!-- Vertical divider -->
+            <div style="width:1px; background-color:rgba(0,0,0,0.12);"></div>
+
+            <!-- Right PDF Panel -->
+            <MudPaper Class="p-0"
+                      Style="flex: 1; display: flex; flex-direction: column; height: 100vh;">
+
+                <!-- Toolbar -->
+                <MudToolBar Dense="true"
+                            Class="m-0 p-0"
+                            Style="min-height: 32px; border-bottom: 2px solid rgba(0,0,0,0.12); flex-shrink: 0;">
+                    <div style="display: flex; align-items: center; justify-content: center; width: 100%; position: relative;">
+                        @if (_rightPdfLoaded)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                           OnClick="@ToggleEdit" Color="MudBlazor.Color.Inherit" />
+                            <MudTextField @bind-Value="_fileNameRight" Placeholder="Right Side PDF" Margin="Margin.Dense" Disabled="@(!_isEditable)"></MudTextField>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.subtitle2" Class="px-2">@(_fileNameRight ?? "Right PDF Document")</MudText>
+                        }
+                    </div>
+                    <div style="margin-left:auto; display:flex; gap:4px;">
+                        <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="MudBlazor.Size.Small" OnClick="@(() => UndoDelete("right"))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Save" Size="MudBlazor.Size.Small" OnClick="@(() => SavePdfAsync("right", _fileNameRight))" />
+                        <MudButton Class="mr-2" Color="MudBlazor.Color.Error" Variant="Variant.Filled" Size="MudBlazor.Size.Small" OnClick="ClearRightAsync">Clear</MudButton>
+                    </div>
+                </MudToolBar>
+                <div style="position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                    @if (_isRightLoading)
+                    {
+                        <MudOverlay Visible="true" DarkBackground="true" ZIndex="9999" Absolute="true">
+                            <MudProgressCircular Color="MudBlazor.Color.Primary" Indeterminate="true" Size="MudBlazor.Size.Large" />
+                        </MudOverlay>
+                    }
+                    @if (!_rightPdfLoaded)
+                    {
+                        <MudFileUpload T="IBrowserFile"
+                                       @ref="@_fileUploadRight"
+                                       OnFilesChanged="OnInputFileChangedRight"
+                                       Hidden="@false"
+                                       InputClass="file-upload-input"
+                                       tabindex="-1"
+                                       @ondrop="@ClearDragClassRight"
+                                       @ondragenter="@SetDragClassRight"
+                                       @ondragleave="@ClearDragClassRight"
+                                       @ondragend="@ClearDragClassRight"
+                                       Style="flex: 1; display: flex; min-height: 0;">
+
+                            <ActivatorContent>
+                                <MudPaper Outlined="true"
+                                          Class="@_dragClassRight"
+                                          Style="flex: 1; display: flex; align-items: center; justify-content: center;
+                                                    flex-direction: column; min-height: 100%">
+                                    <MudIcon Icon="@Icons.Material.Filled.UploadFile" Size="MudBlazor.Size.Medium" />
+                                    <MudText Typo="Typo.subtitle2">
+                                        Drag and drop files here or click
+                                    </MudText>
+                                </MudPaper>
+                            </ActivatorContent>
+                        </MudFileUpload>
+
+                    }
+                    else
+                    {
+                        <div class="drag-scroll-container"
+                             ondragover="dragAutoScroll(event)"
+                             data-autoscroll-threshold=100>
+                            <MudDropZone T="PageModel"
+                                         Identifier="right"
+                                         AllowReorder="true"
+                                         Class="d-flex flex-column gap-2 p-2"
+                                         Style="flex-grow: 1; overflow-y: auto; min-height: 500px; align-items: center;">
+                            </MudDropZone>
+                        </div>
+                        @if (_dialogLoading)
+                        {
+                            <MudOverlay Visible="true" DarkBackground="true" ZIndex="9999">
+                                <MudProgressCircular Color="MudBlazor.Color.Primary" Indeterminate="true" Size="MudBlazor.Size.Large" />
+                            </MudOverlay>
+                            
+                        }
+
+                    }
+                    
+                </div>
+
+            </MudPaper>
+        </ChildContent>
+        <ItemRenderer>
+            <MudContainer Class="flex-column d-flex align-center justify-center flex-grow-1">
+                <MudStack Row="true" Class="pt-4" @key="context.Id">
+                    
+                    
+                    <MudPaper Class="d-flex flex-column align-center justify-center"
+                              Style="cursor: grab;">
+                        <MudButton @onclick="@(() => SelectThumbnail(context))" Class=@($"thumb-button hover-primary-outline {(selectedPageId == context.Id ? "thumbnail-selected" : "")}")
+                                   @ondblclick="@(() => OpenDialogAsync(@context))">
+                            <img src="@context.ThumbnailImgUrl" style="height:auto;" class="" alt="" />
+                        </MudButton>
+
+                    </MudPaper>
+                </MudStack>
+                
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.Center" Spacing="0">
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                   Size="MudBlazor.Size.Small"
+                                   Color="MudBlazor.Color.Error"
+                                   @onclick="@(() => DeleteThumbnail(context))">
+
+                    </MudIconButton>
+                    <MudText Typo="Typo.body2" Class="ml-1" Style="align-content: center">Page @context.OriginalLabel</MudText>
+                    
+                </MudStack>
+                
+               
+                
+            </MudContainer>
+            
+           
+        </ItemRenderer>
+       
+    </MudDropContainer>
+    
+   
+</div>
+
+@code {
+    #nullable enable
+    private const string DefaultDragClass = "relative rounded-lg border-2 border-dashed pa-4 mud-width-full mud-height-full";
+    private string _dragClassLeft = DefaultDragClass;
+    private string _dragClassRight = DefaultDragClass;
+    private IBrowserFile? _fileLeft;
+    private IBrowserFile? _fileRight;
+    private String? _fileNameLeft;
+    private MudFileUpload<IBrowserFile>? _fileUploadLeft;
+    private String? _fileNameRight;
+    private MudFileUpload<IBrowserFile>? _fileUploadRight;
+    private byte[]? _pdfBytesLeft;
+    private byte[]? _pdfBytesRight;
+    private bool _isEditable = false;
+    private MudDropContainer<PageModel>? _dropContainer;
+
+    private bool _isLeftLoading = false;
+    private bool _isRightLoading = false;
+    private bool _leftPdfLoaded = false;
+    private bool _rightPdfLoaded = false;
+    private bool _dialogLoading = false;
+    private List<PageModel> _leftPages = new();
+    private List<PageModel> _rightPages = new();
+
+    private List<PageModel> _pages = new List<PageModel>();
+    private Stack<UndoStackItem> _undoStackLeft = new();
+    private Stack<UndoStackItem> _undoStackRight = new();
+
+    private string? selectedPageId;
+
+    private void DeleteThumbnail(PageModel page)
+    {
+        if (_leftPages.Contains(page))
+        {
+            int zoneIndex = _leftPages.IndexOf(page);
+            int mainIndex = _pages.IndexOf(page);
+
+            _undoStackLeft.Push(
+                new UndoStackItem
+                {
+                    Page = page,
+                    MainIndex = mainIndex,
+                    ZoneIndex = zoneIndex
+                }
+            );
+
+            _leftPages.RemoveAt(zoneIndex);
+            _pages.RemoveAt(mainIndex);
+        }
+        else if (_rightPages.Contains(page))
+        {
+            int zoneIndex = _rightPages.IndexOf(page);
+            int mainIndex = _pages.IndexOf(page);
+            _undoStackRight.Push(
+                new UndoStackItem
+                {
+                    Page = page,
+                    MainIndex = mainIndex,
+                    ZoneIndex = zoneIndex
+                }
+            );
+
+            _rightPages.RemoveAt(zoneIndex);
+            _pages.RemoveAt(mainIndex);
+        }
+      
+        Snackbar.Add($"Page {page.OriginalLabel} has been deleted", Severity.Info);
+        _dropContainer?.Refresh();
+    }
+
+    // private void UndoDelete(string zone)
+    // {
+    //     if (_undoStack.Count == 0)
+    //     {
+    //         return;
+    //     }
+
+    //     var action = _undoStack.Pop();
+    //     _pages.Insert(action.MainIndex, action.Page);
+    //     if (action.Page.Zone == "left")
+    //     {
+    //         _leftPages.Insert(action.ZoneIndex, action.Page);
+    //     }else
+    //     {
+    //         _rightPages.Insert(action.ZoneIndex, action.Page);
+    //     }
+    //     _dropContainer?.Refresh();
+    // }
+
+    private void UndoDelete(string zone)
+    {
+        switch (zone)
+        {
+            case "left":
+                if (_undoStackLeft.Count == 0)
+                {
+                    return;
+                }
+                var actionLeft = _undoStackLeft.Pop();
+                _pages.Insert(actionLeft.MainIndex, actionLeft.Page);
+                _leftPages.Insert(actionLeft.ZoneIndex, actionLeft.Page);
+                break;
+
+            case "right":
+                if (_undoStackRight.Count == 0)
+                {
+                    return;
+                }
+                var actionRight = _undoStackRight.Pop();
+                _pages.Insert(actionRight.MainIndex, actionRight.Page);
+                _rightPages.Insert(actionRight.ZoneIndex, actionRight.Page);
+                break;
+
+        }
+        _dropContainer?.Refresh();
+    }
+
+    private string GetItemKey(PageModel page)
+    {
+        return $"{page.Id}_{selectedPageId}";
+    }
+    private void SelectThumbnail(PageModel page)
+    {
+        Console.WriteLine("BUTTON FIRED");
+        if (selectedPageId == page.Id)
+        {
+            selectedPageId = null;
+        }else
+        {
+            selectedPageId = page.Id;
+        }
+
+        Console.WriteLine($"Comparing selected={selectedPageId} (type {selectedPageId?.GetType()}) vs context={page.Id} (type {page.Id?.GetType()})");
+        _dropContainer?.Refresh();
+
+    }
+
+
+    private async Task OpenDialogAsync(PageModel page)  
+    {
+        _dialogLoading = true;
+        var zonePages = _pages.Where(i => i.Zone == page.Zone).ToList();
+        int startIndex = zonePages.IndexOf(page);
+        var thumbnails = new List<string>();
+        foreach (var p in zonePages)
+        {
+            thumbnails.Add(await Task.Run(() => GeneratePreviewsBase64(p.PdfPageBytes)));
+        }
+        var parameters = new DialogParameters
+        {
+            ["Pages"] = zonePages,
+            ["StartIndex"] = startIndex,
+            ["Thumbnails"] = thumbnails
+        };
+
+        var options = new DialogOptions
+        {
+            CloseOnEscapeKey = true,
+            CloseButton = true,
+            MaxWidth = MaxWidth.Large,
+            FullWidth = true
+        };
+        Console.WriteLine(startIndex);
+        await DialogService.ShowAsync<PreviewDialog>("Simple Dialog", parameters, options);
+        _dialogLoading = false;
+    }  
+
+
+    void ToggleEdit()
+    {
+        _isEditable = !_isEditable;
+    }
+
+
+    private string GeneratePreviewsBase64(byte[] pageBytes, int targetDpi = 120)
+    {
+        if (pageBytes == null || pageBytes.Length == 0) return string.Empty;
+
+        using var ms = new MemoryStream(pageBytes);
+        using var document = PdfiumViewer.PdfDocument.Load(ms);
+
+        // Render at lower DPI for faster processing
+        using var image = document.Render(0, targetDpi, targetDpi, false);
+
+        // Optionally resize if still too wide
+        int maxWidth = 700;
+        var resized = image.Width > maxWidth ? ResizeImage(image, maxWidth) : image;
+
+        using var outStream = new MemoryStream();
+        resized.Save(outStream, ImageFormat.Png);
+
+        return $"data:image/png;base64,{Convert.ToBase64String(outStream.ToArray())}";
+    }
+
+    private string GenerateThumbnailBase64(byte[] pageBytes, int maxWidth = 150)
+    {
+        using var ms = new MemoryStream(pageBytes);
+        using var document = PdfiumViewer.PdfDocument.Load(ms);
+
+        // Render the specific page into a bitmap
+        using var image = document.Render(0, 250, 250, true);
+        // ^ (pageIndex, dpiX, dpiY, forPrinting)
+
+        // Resize the image to a smaller width for thumbnail
+        using var resized = ResizeImage(image, maxWidth);
+
+        // Convert to base64
+        using var outStream = new MemoryStream();
+        resized.Save(outStream, System.Drawing.Imaging.ImageFormat.Png);
+        var base64 = Convert.ToBase64String(outStream.ToArray());
+
+        return $"data:image/png;base64,{base64}";
+    }
+
+
+
+    private async Task ClearLeftAsync()  
+    {  
+        if (_fileUploadLeft is not null)  
+        {  
+            await _fileUploadLeft.ClearAsync(); // clears the MudFileUpload UI  
+        }  
+        _fileLeft = null;  
+        _fileNameLeft = null;  
+        _leftPdfLoaded = false;
+        _pages.RemoveAll(p => p.Zone == "left"); 
+        ClearDragClassLeft(); // optional: reset border color  
+    }  
+
+    private async Task ClearRightAsync()  
+    {  
+        if (_fileUploadRight is not null)  
+        {  
+            await _fileUploadRight.ClearAsync();  
+        }  
+        _fileRight = null;  
+        _fileNameRight = null;  
+        _rightPdfLoaded = false;
+        _pages.RemoveAll(p => p.Zone == "right");
+        ClearDragClassRight();  
+    }  
+
+
+    private async Task OnInputFileChangedLeft(InputFileChangeEventArgs e)
+    {
+        ClearDragClassLeft();
+
+
+        var file = e.File;  // capture file locally
+        _fileNameLeft = file.Name;
+
+        _isLeftLoading = true;
+        _leftPdfLoaded = false;
+        StateHasChanged();
+
+        try
+        {
+            using var stream = file.OpenReadStream(10_000_000); // 10 MB max
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var fileBytes = ms.ToArray();
+
+            await UploadLeftAsync(fileBytes); // pass bytes directly
+
+            _leftPdfLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Upload failed: {ex}");
+            _leftPdfLoaded = false;
+        }
+        finally
+        {
+            _isLeftLoading = false;
+            StateHasChanged();
+        }
+    }
+
+
+    private async Task OnInputFileChangedRight(InputFileChangeEventArgs e)
+    {
+        ClearDragClassRight();
+        var file = e.File;
+        _fileNameRight = file.Name;
+
+        _isRightLoading = true;
+        _rightPdfLoaded = false;
+
+
+        try
+        {
+            using var stream = file.OpenReadStream(10_000_000); // 10 MB max
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var fileBytes = ms.ToArray();
+
+            await UploadRightAsync(fileBytes); // pass bytes directly
+
+            _rightPdfLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Upload failed: {ex}");
+            _rightPdfLoaded = false;
+        }
+        finally
+        {
+            _isRightLoading = false;
+            StateHasChanged();
+        }
+
+
+        _rightPdfLoaded = true;
+        _isRightLoading = false;
+
+
+    }
+
+    private async Task UploadLeftAsync(byte[] pdfBytes)
+    {
+        _leftPages.Clear();
+
+        if (pdfBytes == null || pdfBytes.Length == 0)
+            return;
+
+        _pdfBytesLeft = pdfBytes;
+        await Task.Run(() =>
+            {
+                Snackbar.Add($"Left: Uploaded {_fileNameLeft} ({pdfBytes.Length} bytes)");
+                _leftPages = GenerateThumbnails(_pdfBytesLeft, "left");
+            }
+        );
+
+        _pages = _leftPages.Concat(_rightPages).ToList();
+    }
+
+
+  
+
+    private async Task UploadRightAsync(byte[] pdfBytes)
+    {
+        _rightPages.Clear();
+        if (pdfBytes == null || pdfBytes.Length == 0)
+            return;
+
+        _pdfBytesRight = pdfBytes;
+        await Task.Run(() =>
+            {
+                Snackbar.Add($"Left: Uploaded {_fileNameRight} ({pdfBytes.Length} bytes)");
+                _rightPages = GenerateThumbnails(_pdfBytesRight, "right");
+            }
+        );
+
+        _pages = _leftPages.Concat(_rightPages).ToList();
+    }
+
+
+
+    private void SetDragClassLeft()
+        => _dragClassLeft = $"{DefaultDragClass} mud-border-primary";
+
+    private void ClearDragClassLeft()
+        => _dragClassLeft = DefaultDragClass;
+
+    private void SetDragClassRight()
+        => _dragClassRight = $"{DefaultDragClass} mud-border-primary";
+
+    private void ClearDragClassRight()
+        => _dragClassRight = DefaultDragClass;
+
+
+    public List<PageModel> GenerateThumbnails(byte[] pdfBytes, string zone)
+    {
+        var pages = new List<PageModel>();
+
+        using var stream = new MemoryStream(pdfBytes);
+        using var pdfDoc = PdfReader.Open(stream, PdfDocumentOpenMode.Import);
+
+        for (int i=0; i < pdfDoc.PageCount; i++)
+        {
+            using var outputDoc = new PdfSharpCore.Pdf.PdfDocument();
+
+            outputDoc.AddPage(pdfDoc.Pages[i]);
+
+            using var ms = new MemoryStream();
+            outputDoc.Save(ms);
+            var pageBytes = ms.ToArray();
+
+            var base64 = GenerateThumbnailBase64(pageBytes);
+
+            pages.Add(
+                new PageModel
+                {
+                    OriginalLabel = $"{zone}-{i+1}",
+                    PageNumber = i+1,
+                    Zone = zone,
+                    ThumbnailImgUrl = base64,
+                    PdfPageBytes = pageBytes
+                }
+            );
+        }
+
+        return pages;
+    }
+
+    Image ResizeImage(Image img, int maxWidth)
+    {
+        var ratio = (double)maxWidth / img.Width;
+        int newWidth = maxWidth;
+        int newHeight = (int)(img.Height * ratio);
+
+        var newImg = new Bitmap(newWidth, newHeight);
+        using var g = Graphics.FromImage(newImg);
+        g.DrawImage(img, 0, 0, newWidth, newHeight);
+        return newImg;
+    }
+
+    private void OnItemDropped(MudItemDropInfo<PageModel> dropInfo)
+    {
+        if(dropInfo.Item.Zone =="left")
+        {
+            _leftPages.Remove(dropInfo.Item);
+        }else if (dropInfo.Item.Zone == "right")
+        {
+            _rightPages.Remove(dropInfo.Item);
+        }
+
+        dropInfo.Item.Zone = dropInfo.DropzoneIdentifier;
+
+        if (dropInfo.DropzoneIdentifier == "left")
+        {
+            if (dropInfo.IndexInZone >= 0 && dropInfo.IndexInZone <= _leftPages.Count)
+                _leftPages.Insert(dropInfo.IndexInZone, dropInfo.Item);
+            else
+                _leftPages.Add(dropInfo.Item);
+        }
+        else if (dropInfo.DropzoneIdentifier == "right")
+        {
+            if (dropInfo.IndexInZone >= 0 && dropInfo.IndexInZone <= _rightPages.Count)
+                _rightPages.Insert(dropInfo.IndexInZone, dropInfo.Item);
+            else
+                _rightPages.Add(dropInfo.Item);
+        }
+
+        // Rebuild master list
+        _pages = _leftPages.Concat(_rightPages).ToList();
+    }
+
+    private async Task SavePdfAsync(string zone, string _fileName)
+    {
+        var selectedPages = _pages.Where(p => p.Zone == zone).ToList();
+        if (!selectedPages.Any())
+            return;
+
+        using var outputDoc = new PdfSharpCore.Pdf.PdfDocument();
+        foreach (var page in selectedPages)
+        {
+            using var ms = new MemoryStream(page.PdfPageBytes);
+            var inputDoc = PdfReader.Open(ms, PdfDocumentOpenMode.Import);
+            outputDoc.AddPage(inputDoc.Pages[0]);
+        }
+
+        using var msOut = new MemoryStream();
+        outputDoc.Save(msOut);
+        var pdfBytes = msOut.ToArray();
+
+        await JS.InvokeVoidAsync("downloadFile",
+            $"{_fileName}",
+            "application/pdf",
+            Convert.ToBase64String(pdfBytes));
+    }
+
+
+}

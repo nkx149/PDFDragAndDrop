@@ -1,0 +1,130 @@
+﻿@using PdfWebApp.Models;
+@using PdfiumViewer;
+@using System.Drawing;
+@using System.Drawing.Imaging;
+@using System.IO;
+
+<style>
+    
+
+    .pdf-carousel {
+        flex: 1; /* fill available space */
+        max-height: 100%; /* respect dialog size */
+        overflow: hidden;
+        position: relative;
+        background-color: gainsboro;
+    }
+    .mud-dialog-content {
+        display: flex;
+        flex-direction: column;
+        height: 80vh;
+        overflow-y: hidden !important;
+    }
+    .mud-dialog {
+        overflow-y: hidden !important; /* disable dialog’s scrollbar */
+    }
+    .pdf-carousel .mud-carousel-content {
+        overflow: hidden !important; /* kill MudBlazor’s internal scrollbar */
+        height: 100vh;
+    }
+
+    .pdf-carousel-item {
+        display: flex;
+        justify-content: center;
+        align-items: flex-start; /* align image to top */
+        max-height: 80vh;
+        overflow-y: auto;
+        padding-top: 10px; /* 👈 space above image */
+        padding-bottom: 30px;
+    }
+
+    .carousel-img {
+        max-width: 100%;
+        height: auto;
+        display: block;
+        flex-shrink: 0;
+    }
+
+</style>
+
+<MudDialog>
+    <TitleContent>
+        Page Preview
+    </TitleContent>
+    <DialogContent>
+        
+
+        @if (Thumbnails != null && StartIndex >= 0 && StartIndex < Thumbnails.Count)
+        {
+            <MudCarousel Class="pdf-carousel" ShowArrows="true" ShowBullets="true"
+                         TData="object" AutoCycle="false" SelectedIndex="@StartIndex">
+                @for (int i = 0; i < Thumbnails.Count; i++)
+                {
+                    var imgSrc = Thumbnails[i];
+                    <MudCarouselItem Class="pdf-carousel-item">
+                        <img src="@imgSrc" class="carousel-img" />
+                        
+                    </MudCarouselItem>
+                }
+            </MudCarousel>
+        }
+        else
+        {
+            <MudProgressCircular Indeterminate="true" />
+            <MudText>Loading preview...</MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="MudBlazor.Color.Primary" OnClick="Submit">OK</MudButton>
+    </DialogActions>
+</MudDialog>
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+    [Parameter] public List<PageModel> Pages { get; set; } = default!;
+    [Parameter] public int StartIndex { get; set; } = 0;
+    [Parameter] public List<string> Thumbnails { get; set; } = new();
+    private bool _isLoading = true;
+    private int _currentIndex;
+    private bool _isDataReady = false;
+    private void Submit() => MudDialog.Close(DialogResult.Ok(true));
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private Transition transition = Transition.Slide;
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        ValidateAndPrepareData();
+    }
+
+    private void ValidateAndPrepareData()
+    {
+        // Ensure we have valid data before rendering the carousel
+        if (Thumbnails != null && Thumbnails.Count > 0)
+        {
+            // Clamp StartIndex to valid range and set current selected index
+            _currentIndex = Math.Max(0, Math.Min(StartIndex, Thumbnails.Count - 1));
+            _isDataReady = true;
+            Console.WriteLine($"Dialog initialized - Thumbnails: {Thumbnails.Count}, StartIndex: {StartIndex}, CurrentSelectedIndex: {_currentIndex}");
+        }
+        else
+        {
+            _isDataReady = false;
+            Console.WriteLine("Dialog not ready - no thumbnails available");
+        }
+
+        StateHasChanged();
+    }
+
+    
+
+    
+
+
+
+
+        
+}
